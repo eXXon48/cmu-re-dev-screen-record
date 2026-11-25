@@ -12,19 +12,24 @@ use std::process::ExitCode;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::{Duration, Instant};
 
+/// eprintln! that never panics: stderr may be a closed ssh channel by the time we report.
+macro_rules! say {
+    ($($t:tt)*) => {{ let _ = writeln!(io::stderr(), $($t)*); }};
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let o = match opts::parse(&args) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("{e}");
+            say!("{e}");
             return ExitCode::from(2);
         }
     };
     match run(&o) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("screen-record: {e}");
+            say!("screen-record: {e}");
             ExitCode::FAILURE
         }
     }
@@ -65,7 +70,7 @@ fn run(o: &opts::Opts) -> io::Result<()> {
         }
     }
     let secs = start.elapsed().as_secs_f64();
-    eprintln!("frames={frames} dropped={dropped} fps={:.1}", frames as f64 / secs);
+    say!("frames={frames} dropped={dropped} fps={:.1}", frames as f64 / secs);
     result?;
     out.flush()
 }
