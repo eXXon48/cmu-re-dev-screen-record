@@ -8,7 +8,8 @@ touches pixels; it only paces frames and copies the encoded bitstream.
 
 ## Use
 
-Install the package from the Store, then from the PC:
+Turn on SSH in the Store's Developer section (the package depends on `cmu-re-dev-ssh`),
+install the package from the same section, then from the PC:
 
 ```sh
 ssh -p 36000 cmu@<unit> /data_persist/cmu-re/pkg/cmu-re-dev-screen-record/bin/screen-record -t 20 > demo.h264

@@ -7,7 +7,7 @@
   "category": "System mods",
   "description": "Developer tool: records the screen to an H.264 video at 24 fps, run from SSH. The colour conversion and the encoding run on the graphics and video hardware, so the processor stays free.",
   "minDaemon": "0.1.0",
-  "depends": "cmu-re-store (>= 0.13.4)",
+  "depends": "cmu-re-store (>= 0.13.6), cmu-re-dev-ssh",
   "conflicts": "",
   "restart": false,
   "files": [
