@@ -1,0 +1,115 @@
+name: build
+
+on:
+  push:
+    branches: [ main, develop ]
+    # v* = prod release (on main); dev/v* = dev prerelease (on develop)
+    tags: [ 'v*', 'dev/v*' ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+
+env:
+  # mirror of cmu-re-store's build.yml / rvp-build image
+  ZIG_VERSION: 0.14.1
+  CARGO_ZIGBUILD_VERSION: 0.24.1
+  TARGET: arm-unknown-linux-musleabi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Manifest checks
+        run: sh test/run.sh
+
+      - name: Install zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ env.ZIG_VERSION }}
+
+      - name: Install toolchain (rust-toolchain.toml) and cargo-zigbuild
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          cargo install cargo-zigbuild --version "$CARGO_ZIGBUILD_VERSION" --locked
+
+      - name: Test (host)
+        run: cargo test
+
+      - name: Cross-build ARM binary
+        run: |
+          cargo zigbuild --release --target "$TARGET"
+          f=target/$TARGET/release/screen-record
+          file "$f" | tee /dev/stderr | grep -q 'ELF 32-bit LSB executable, ARM, EABI5.*statically linked'
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: screen-record-arm
+          path: target/${{ env.TARGET }}/release/screen-record
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/dev/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RVP_STORE_REV: f33c3c28938778ad7cd8cab976c0072524976254   # store develop: rvp-pack with config + meta packages
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0   # branch heads for the tag-on-branch check
+
+      - name: Tag sits on its branch
+        run: |
+          case "$GITHUB_REF_NAME" in
+            dev/v*) branch=develop; ver=${GITHUB_REF_NAME#dev/v} ;;
+            *)      branch=main;    ver=${GITHUB_REF_NAME#v} ;;
+          esac
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$branch"; then
+            echo "::error::tag $GITHUB_REF_NAME is not on $branch"
+            exit 1
+          fi
+          echo "VER=$ver" >> "$GITHUB_ENV"
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: screen-record-arm
+          path: bin
+
+      - name: Checkout store (rvp-pack source)
+        uses: actions/checkout@v4
+        with:
+          repository: eXXon48/cmu-re-store
+          ref: ${{ env.RVP_STORE_REV }}
+          token: ${{ secrets.STORE_READ_TOKEN }}
+          path: store
+          persist-credentials: false
+
+      - name: Build rvp-pack
+        working-directory: store
+        run: |
+          rustup toolchain install
+          cargo build --release --offline --bin rvp-pack
+
+      - name: Pack Revised Store package
+        run: |
+          sh tools/mkpkg.sh "$VER" store/target/release/rvp-pack bin/screen-record "cmu-re-screen-record-$VER.rvp"
+          sha256sum "cmu-re-screen-record-$VER.rvp" | tee "cmu-re-screen-record-$VER.rvp.sha256"
+
+      - name: Attach package to release
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: ${{ startsWith(github.ref, 'refs/tags/dev/v') }}
+          files: |
+            cmu-re-screen-record-${{ env.VER }}.rvp
+            cmu-re-screen-record-${{ env.VER }}.rvp.sha256

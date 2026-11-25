@@ -1,0 +1,16 @@
+{
+  "formatVersion": 1,
+  "name": "cmu-re-screen-record",
+  "version": "0.0.0",
+  "author": "CMU-Revised",
+  "targetCMU": "74.00.324A",
+  "category": "System mods",
+  "description": "Developer tool: records the screen to an H.264 video at 24 fps, run from SSH. The colour conversion and the encoding run on the graphics and video hardware, so the processor stays free.",
+  "minDaemon": "0.1.0",
+  "depends": "cmu-re-store (>= 0.13.4)",
+  "conflicts": "",
+  "restart": false,
+  "files": [
+    { "live": "bin/screen-record", "payload": "payload/bin/screen-record", "mode": "0755", "owner": "1000:1000", "type": "new", "apply": "whole-file" }
+  ]
+}
