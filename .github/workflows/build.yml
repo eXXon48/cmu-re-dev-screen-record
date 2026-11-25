@@ -15,7 +15,7 @@ env:
   # mirror of cmu-re-store's build.yml / rvp-build image
   ZIG_VERSION: 0.14.1
   CARGO_ZIGBUILD_VERSION: 0.24.1
-  TARGET: arm-unknown-linux-musleabi
+  TARGET: arm-unknown-linux-gnueabi
 
 jobs:
   build:
@@ -43,9 +43,9 @@ jobs:
 
       - name: Cross-build ARM binary
         run: |
-          cargo zigbuild --release --target "$TARGET"
+          cargo zigbuild --release --target "$TARGET.2.11" # unit glibc 2.11; libvpu.so.4 is dlopened
           f=target/$TARGET/release/screen-record
-          file "$f" | tee /dev/stderr | grep -q 'ELF 32-bit LSB executable, ARM, EABI5.*statically linked'
+          file "$f" | tee /dev/stderr | grep -q 'ELF 32-bit LSB executable, ARM, EABI5.*dynamically linked'
 
       - name: Upload binary
         uses: actions/upload-artifact@v4

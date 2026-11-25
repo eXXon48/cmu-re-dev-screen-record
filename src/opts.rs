@@ -1,4 +1,4 @@
-//! Command line and the gst-launch pipeline built from it.
+//! Command line.
 
 use std::path::PathBuf;
 
@@ -34,35 +34,17 @@ pub fn parse(args: &[String]) -> Result<Opts, String> {
     if !(1..=60).contains(&o.fps) {
         return Err("fps must be 1..60".into());
     }
-    if o.bitrate == 0 {
-        return Err("bitrate must be > 0".into());
+    // the VPU takes kbit/s, 1..=32767
+    if !(1000..=32_767_000).contains(&o.bitrate) {
+        return Err("bitrate must be 1000..32767000".into());
     }
     if let Some(p) = &o.out {
         let dir = p.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(".".as_ref());
-        if p.to_string_lossy().contains(char::is_whitespace) {
-            return Err("-o path must not contain spaces".into());
-        }
         if !dir.is_dir() {
             return Err(format!("no such directory: {}", dir.display()));
         }
     }
     Ok(o)
-}
-
-/// Arguments for `gst-launch-0.10`: I420 frames on stdin -> vpuenc H.264 -> stdout or file.
-pub fn gst_argv(o: &Opts, w: u32, h: u32) -> Vec<String> {
-    let sink = match &o.out {
-        Some(p) => format!("filesink location={}", p.display()),
-        None => "fdsink fd=1".into(),
-    };
-    let s = format!(
-        "-q fdsrc blocksize={} ! video/x-raw-yuv,format=(fourcc)I420,width={w},height={h},framerate={}/1 ! vpuenc codec=6 bitrate={} ! {sink}",
-        w * h * 3 / 2,
-        o.fps,
-        o.bitrate
-    );
-    // ponytail: split on spaces; parse() rejects a -o path with spaces
-    s.split(' ').map(String::from).collect()
 }
 
 #[cfg(test)]
@@ -89,12 +71,13 @@ mod tests {
         assert!(parse(&a("-r 0")).is_err());
         assert!(parse(&a("-r 61")).is_err());
         assert!(parse(&a("-b 0")).is_err());
+        assert!(parse(&a("-b 999")).is_err());
+        assert!(parse(&a("-b 32768000")).is_err());
     }
 
     #[test]
     fn parse_rejects_missing_dir() {
         assert!(parse(&a("-o /nonexistent-dir-xyz/x.h264")).is_err());
-        assert!(parse(&["-o".into(), "/tmp/a b.h264".into()]).is_err());
     }
 
     #[test]
@@ -105,21 +88,4 @@ mod tests {
         assert!(parse(&a("extra")).is_err());
     }
 
-    #[test]
-    fn gst_argv_stdout() {
-        let o = parse(&[]).unwrap();
-        assert_eq!(
-            gst_argv(&o, 800, 480).join(" "),
-            "-q fdsrc blocksize=576000 ! video/x-raw-yuv,format=(fourcc)I420,width=800,height=480,framerate=24/1 ! vpuenc codec=6 bitrate=4000000 ! fdsink fd=1"
-        );
-    }
-
-    #[test]
-    fn gst_argv_file() {
-        let o = parse(&a("-o /tmp/x.h264 -r 30 -b 1000000")).unwrap();
-        assert_eq!(
-            gst_argv(&o, 800, 480).join(" "),
-            "-q fdsrc blocksize=576000 ! video/x-raw-yuv,format=(fourcc)I420,width=800,height=480,framerate=30/1 ! vpuenc codec=6 bitrate=1000000 ! filesink location=/tmp/x.h264"
-        );
-    }
 }

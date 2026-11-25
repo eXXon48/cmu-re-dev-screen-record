@@ -1,0 +1,3 @@
+# glibc build (links the unit's libvpu at run time): fixed-address ET_EXEC like the stock binaries.
+[target.arm-unknown-linux-gnueabi]
+rustflags = ["-C", "relocation-model=static"]

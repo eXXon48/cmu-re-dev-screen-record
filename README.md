@@ -3,7 +3,8 @@
 Developer tool for the CMU150: records the HMI screen (800x480) to H.264 at 24 fps.
 
 The IPU converts the shown framebuffer page to I420 by DMA and the VPU encodes it
-(`gst-launch-0.10 … vpuenc`), so the CPU only moves the frame bytes.
+straight from that buffer through the unit's `libvpu.so.4` (loaded at run time), so the CPU never
+touches pixels; it only paces frames and copies the encoded bitstream.
 
 ## Use
 
@@ -40,7 +41,7 @@ ffmpeg -fflags +genpts -r 24 -i demo.h264 -c copy demo.mp4
 
 ```sh
 ./t.sh cargo test
-./t.sh cargo zigbuild --release --target arm-unknown-linux-musleabi
+./t.sh cargo zigbuild --release --target arm-unknown-linux-gnueabi.2.11
 ```
 
 `t.sh` runs the `rvp-build` image (see `cmu-re-store/Containerfile`).

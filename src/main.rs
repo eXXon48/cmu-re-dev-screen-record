@@ -1,13 +1,15 @@
 //! screen-record: CMU150 HMI screen to H.264. The IPU converts the fb0 page to I420 by DMA,
-//! the hardware encoder (gst-launch-0.10 vpuenc) packs it; the CPU only moves the I420 bytes.
+//! the VPU encodes it straight from that buffer; the CPU only paces frames and copies the bitstream.
 
 mod opts;
 mod pacer;
 mod sys;
+mod vpu;
 
+use std::fs::File;
 use std::io::{self, ErrorKind, Write};
-use std::os::unix::process::CommandExt;
-use std::process::{Command, ExitCode, Stdio};
+use std::os::fd::AsFd;
+use std::process::ExitCode;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::{Duration, Instant};
 
@@ -21,7 +23,7 @@ fn main() -> ExitCode {
         }
     };
     match run(&o) {
-        Ok(c) => c,
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("screen-record: {e}");
             ExitCode::FAILURE
@@ -29,35 +31,25 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(o: &opts::Opts) -> io::Result<ExitCode> {
+fn run(o: &opts::Opts) -> io::Result<()> {
     let fb = sys::Fb::open("/dev/fb0")?;
     let ipu = sys::Ipu::open()?;
     let buf = ipu.alloc((fb.w * fb.h * 3 / 2) as usize)?;
     let mut task = sys::IpuTask::csc(fb.w, fb.h, fb.page_paddr()?, buf.paddr);
     ipu.check(&task)?;
+    let mut enc = vpu::Encoder::open(fb.w, fb.h, o.fps, o.bitrate / 1000)?;
+    // Raw fd, not Stdout: Stdout is line-buffered and would flush on every 0x0a byte.
+    let mut out = match &o.out {
+        Some(p) => File::create(p)?,
+        None => File::from(io::stdout().as_fd().try_clone_to_owned()?),
+    };
     sys::install_signals();
 
-    // Own process group: a terminal Ctrl-C reaches only us, the encoder gets a clean EOF.
-    let mut child = Command::new("gst-launch-0.10")
-        .args(opts::gst_argv(o, fb.w, fb.h))
-        .stdin(Stdio::piped())
-        .process_group(0)
-        .spawn()?;
-    let mut pipe = child.stdin.take().expect("piped stdin");
-    let mut grab = || {
-        task.input.paddr = fb.page_paddr()?;
-        ipu.queue(&task)?;
-        pipe.write_all(buf.bytes())
-    };
-
-    // The first write blocks until gst-launch has loaded its plugins (can take seconds);
-    // the clock starts after it, so start-up does not count as dropped frames.
-    let mut result = grab();
+    let mut result = enc.headers(&mut out);
     let start = Instant::now();
     let end = o.secs.map(|s| start + Duration::from_secs(s));
     let mut pacer = pacer::Pacer::new(o.fps, start);
-    pacer.next(start);
-    let (mut frames, mut dropped) = (1u64, 0u64);
+    let (mut frames, mut dropped) = (0u64, 0u64);
     while result.is_ok() && !sys::STOP.load(Relaxed) {
         let (sleep, d) = pacer.next(Instant::now());
         dropped += d;
@@ -65,19 +57,15 @@ fn run(o: &opts::Opts) -> io::Result<ExitCode> {
         if end.is_some_and(|e| Instant::now() >= e) {
             break;
         }
-        match grab() {
+        task.input.paddr = fb.page_paddr()?;
+        match ipu.queue(&task).and_then(|()| enc.frame(buf.paddr, &mut out)) {
             Ok(()) => frames += 1,
             Err(e) if e.kind() == ErrorKind::BrokenPipe => break, // reader gone (ssh closed)
-            Err(e) => {
-                result = Err(e);
-                break;
-            }
+            Err(e) => result = Err(e),
         }
     }
     let secs = start.elapsed().as_secs_f64();
-    drop(pipe); // EOF -> encoder flushes and exits
-    let st = child.wait()?;
     eprintln!("frames={frames} dropped={dropped} fps={:.1}", frames as f64 / secs);
     result?;
-    Ok(if st.success() { ExitCode::SUCCESS } else { ExitCode::from(st.code().unwrap_or(1) as u8) })
+    out.flush()
 }

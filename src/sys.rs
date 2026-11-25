@@ -1,7 +1,7 @@
 //! Kernel interfaces: fb0 geometry, the Freescale IPU task device (kernel 3.0.35 BSP,
-//! `include/linux/ipu.h`), signals. No crates: musl symbols declared here.
+//! `include/linux/ipu.h`), signals. No crates: libc symbols declared here.
 
-use std::ffi::{c_int, c_void};
+use std::ffi::c_int;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd;
@@ -9,8 +9,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 extern "C" {
     fn ioctl(fd: c_int, req: c_int, ...) -> c_int;
-    fn mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, off: i64) -> *mut c_void;
-    fn munmap(addr: *mut c_void, len: usize) -> c_int;
     fn signal(sig: c_int, handler: usize) -> usize;
 }
 
@@ -136,18 +134,11 @@ impl Ipu {
         Ok(Ipu(OpenOptions::new().read(true).write(true).open("/dev/mxc_ipu")?))
     }
 
-    /// DMA buffer for the IPU output, mapped for reading.
+    /// Physically contiguous DMA buffer for the IPU output (the VPU reads it directly).
     pub fn alloc(&self, len: usize) -> io::Result<IpuBuf<'_>> {
         let mut paddr = len as c_int;
         ctl(&self.0, IPU_ALLOC, &mut paddr)?;
-        // SAFETY: the driver maps the physical range given as the offset.
-        let ptr = unsafe { mmap(std::ptr::null_mut(), len, 1 /*PROT_READ*/, 1 /*MAP_SHARED*/, self.0.as_raw_fd(), paddr as u32 as i64) };
-        if ptr as isize == -1 {
-            let e = io::Error::last_os_error();
-            let _ = ctl(&self.0, IPU_FREE, &mut paddr);
-            return Err(e);
-        }
-        Ok(IpuBuf { ipu: self, paddr: paddr as u32, ptr: ptr as *const u8, len })
+        Ok(IpuBuf { ipu: self, paddr: paddr as u32 })
     }
 
     /// Validate a task once; warnings (misaligned offsets) are fine.
@@ -167,22 +158,11 @@ impl Ipu {
 pub struct IpuBuf<'a> {
     ipu: &'a Ipu,
     pub paddr: u32,
-    ptr: *const u8,
-    len: usize,
-}
-
-impl IpuBuf<'_> {
-    pub fn bytes(&self) -> &[u8] {
-        // SAFETY: mapped for len bytes until drop.
-        unsafe { std::slice::from_raw_parts(self.ptr, self.len) }
-    }
 }
 
 impl Drop for IpuBuf<'_> {
     fn drop(&mut self) {
         let mut p = self.paddr as c_int;
-        // SAFETY: unmapping our own mapping.
-        unsafe { munmap(self.ptr as *mut c_void, self.len) };
         let _ = ctl(&self.ipu.0, IPU_FREE, &mut p);
     }
 }
@@ -251,4 +231,12 @@ mod tests {
     fn stop_signals_include_hup() {
         assert_eq!(stop_signals(), [1, 2, 15]);
     }
+}
+
+/// glibc 2.11 on the unit has no getauxval (2.16+); Rust std only uses it for the
+/// alternate signal stack size, where 0 means "use the default".
+#[cfg(target_env = "gnu")]
+#[no_mangle]
+pub extern "C" fn getauxval(_type: std::ffi::c_ulong) -> std::ffi::c_ulong {
+    0
 }
