@@ -33,7 +33,7 @@ The output is a raw H.264 stream without timestamps:
 
 ```sh
 ffplay -framerate 24 demo.h264
-ffmpeg -framerate 24 -i demo.h264 -c copy demo.mp4
+ffmpeg -fflags +genpts -r 24 -i demo.h264 -c copy demo.mp4
 ```
 
 ## Build
