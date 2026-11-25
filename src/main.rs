@@ -44,25 +44,28 @@ fn run(o: &opts::Opts) -> io::Result<ExitCode> {
         .process_group(0)
         .spawn()?;
     let mut pipe = child.stdin.take().expect("piped stdin");
+    let mut grab = || {
+        task.input.paddr = fb.page_paddr()?;
+        ipu.queue(&task)?;
+        pipe.write_all(buf.bytes())
+    };
 
+    // The first write blocks until gst-launch has loaded its plugins (can take seconds);
+    // the clock starts after it, so start-up does not count as dropped frames.
+    let mut result = grab();
     let start = Instant::now();
     let end = o.secs.map(|s| start + Duration::from_secs(s));
     let mut pacer = pacer::Pacer::new(o.fps, start);
-    let (mut frames, mut dropped) = (0u64, 0u64);
-    let mut result = Ok(());
-    while !sys::STOP.load(Relaxed) {
+    pacer.next(start);
+    let (mut frames, mut dropped) = (1u64, 0u64);
+    while result.is_ok() && !sys::STOP.load(Relaxed) {
         let (sleep, d) = pacer.next(Instant::now());
         dropped += d;
         std::thread::sleep(sleep);
         if end.is_some_and(|e| Instant::now() >= e) {
             break;
         }
-        let r = fb.page_paddr().and_then(|p| {
-            task.input.paddr = p;
-            ipu.queue(&task)
-        });
-        let r = r.and_then(|_| pipe.write_all(buf.bytes()));
-        match r {
+        match grab() {
             Ok(()) => frames += 1,
             Err(e) if e.kind() == ErrorKind::BrokenPipe => break, // reader gone (ssh closed)
             Err(e) => {
@@ -71,9 +74,9 @@ fn run(o: &opts::Opts) -> io::Result<ExitCode> {
             }
         }
     }
+    let secs = start.elapsed().as_secs_f64();
     drop(pipe); // EOF -> encoder flushes and exits
     let st = child.wait()?;
-    let secs = start.elapsed().as_secs_f64();
     eprintln!("frames={frames} dropped={dropped} fps={:.1}", frames as f64 / secs);
     result?;
     Ok(if st.success() { ExitCode::SUCCESS } else { ExitCode::from(st.code().unwrap_or(1) as u8) })

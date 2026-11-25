@@ -11,6 +11,7 @@
   "conflicts": "",
   "restart": false,
   "files": [
-    { "live": "bin/screen-record", "payload": "payload/bin/screen-record", "mode": "0755", "owner": "1000:1000", "type": "new", "apply": "whole-file" }
+    { "live": "bin/screen-record", "payload": "payload/bin/screen-record", "mode": "0755", "owner": "1000:1000", "type": "new", "apply": "whole-file" },
+    { "live": "/usr/bin/screen-record", "target": "bin/screen-record", "mode": "0777", "owner": "1000:1000", "type": "link", "apply": "whole-file", "reason": "screen-record on PATH for ssh: /usr/bin/screen-record -> package binary" }
   ]
 }
