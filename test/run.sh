@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 python3 - <<'PY'
 import json
 m = json.load(open("pkg/manifest.json"))
-assert m["name"] == "cmu-re-screen-record", m["name"]
+assert m["name"] == "cmu-re-dev-screen-record", m["name"]
 assert m["version"] == "0.0.0", "version placeholder must stay 0.0.0 (mkpkg.sh rewrites it)"
 assert m["restart"] is False
 [f] = m["files"]

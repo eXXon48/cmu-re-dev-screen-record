@@ -1,4 +1,4 @@
-# cmu-re-screen-record
+# cmu-re-dev-screen-record
 
 Developer tool for the CMU150: records the HMI screen (800x480) to H.264 at 24 fps.
 
@@ -10,13 +10,13 @@ The IPU converts the shown framebuffer page to I420 by DMA and the VPU encodes i
 Install the package from the Store, then from the PC:
 
 ```sh
-ssh -p 36000 cmu@<unit> /data_persist/cmu-re/pkg/cmu-re-screen-record/bin/screen-record -t 20 > demo.h264
+ssh -p 36000 cmu@<unit> /data_persist/cmu-re/pkg/cmu-re-dev-screen-record/bin/screen-record -t 20 > demo.h264
 ```
 
 Or record to a file on the unit and copy it later (not affected by Wi-Fi):
 
 ```sh
-ssh -p 36000 cmu@<unit> /data_persist/cmu-re/pkg/cmu-re-screen-record/bin/screen-record -t 20 -o /tmp/demo.h264
+ssh -p 36000 cmu@<unit> /data_persist/cmu-re/pkg/cmu-re-dev-screen-record/bin/screen-record -t 20 -o /tmp/demo.h264
 ```
 
 ```

@@ -103,13 +103,13 @@ jobs:
 
       - name: Pack Revised Store package
         run: |
-          sh tools/mkpkg.sh "$VER" store/target/release/rvp-pack bin/screen-record "cmu-re-screen-record-$VER.rvp"
-          sha256sum "cmu-re-screen-record-$VER.rvp" | tee "cmu-re-screen-record-$VER.rvp.sha256"
+          sh tools/mkpkg.sh "$VER" store/target/release/rvp-pack bin/screen-record "cmu-re-dev-screen-record-$VER.rvp"
+          sha256sum "cmu-re-dev-screen-record-$VER.rvp" | tee "cmu-re-dev-screen-record-$VER.rvp.sha256"
 
       - name: Attach package to release
         uses: softprops/action-gh-release@v2
         with:
           prerelease: ${{ startsWith(github.ref, 'refs/tags/dev/v') }}
           files: |
-            cmu-re-screen-record-${{ env.VER }}.rvp
-            cmu-re-screen-record-${{ env.VER }}.rvp.sha256
+            cmu-re-dev-screen-record-${{ env.VER }}.rvp
+            cmu-re-dev-screen-record-${{ env.VER }}.rvp.sha256

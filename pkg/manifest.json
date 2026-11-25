@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "name": "cmu-re-screen-record",
+  "name": "cmu-re-dev-screen-record",
   "version": "0.0.0",
   "author": "CMU-Revised",
   "targetCMU": "74.00.324A",
