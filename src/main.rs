@@ -8,7 +8,6 @@ mod vpu;
 
 use std::fs::File;
 use std::io::{self, ErrorKind, Write};
-use std::os::fd::AsFd;
 use std::process::ExitCode;
 use std::sync::atomic::Ordering::Relaxed;
 use std::time::{Duration, Instant};
@@ -37,12 +36,13 @@ fn run(o: &opts::Opts) -> io::Result<()> {
     let buf = ipu.alloc((fb.w * fb.h * 3 / 2) as usize)?;
     let mut task = sys::IpuTask::csc(fb.w, fb.h, fb.page_paddr()?, buf.paddr);
     ipu.check(&task)?;
-    let mut enc = vpu::Encoder::open(fb.w, fb.h, o.fps, o.bitrate / 1000)?;
     // Raw fd, not Stdout: Stdout is line-buffered and would flush on every 0x0a byte.
+    // Taken before the encoder opens: libvpu printf()s its errors to stdout.
     let mut out = match &o.out {
         Some(p) => File::create(p)?,
-        None => File::from(io::stdout().as_fd().try_clone_to_owned()?),
+        None => sys::steal_stdout()?,
     };
+    let mut enc = vpu::Encoder::open(fb.w, fb.h, o.fps, o.bitrate / 1000)?;
     sys::install_signals();
 
     let mut result = enc.headers(&mut out);

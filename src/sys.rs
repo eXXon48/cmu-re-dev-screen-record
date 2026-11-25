@@ -10,6 +10,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 extern "C" {
     fn ioctl(fd: c_int, req: c_int, ...) -> c_int;
     fn signal(sig: c_int, handler: usize) -> usize;
+    fn dup(fd: c_int) -> c_int;
+    fn dup2(fd: c_int, to: c_int) -> c_int;
+}
+
+/// Take stdout for the video and point fd 1 at stderr: libvpu prints its errors
+/// with printf, which must not end up inside the H.264 stream.
+pub fn steal_stdout() -> io::Result<File> {
+    use std::os::fd::FromRawFd;
+    // SAFETY: plain fd syscalls; the dup'ed fd is owned only by the returned File.
+    unsafe {
+        let fd = dup(1);
+        if fd < 0 || dup2(2, 1) < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(File::from_raw_fd(fd))
+    }
 }
 
 const fn ioc(dir: u32, nr: u32, size: usize) -> u32 {
