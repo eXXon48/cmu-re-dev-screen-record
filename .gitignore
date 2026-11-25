@@ -1,0 +1,6 @@
+/build-pkg/
+/dist/
+/target/
+*.rvp
+*.sha256
+*.h264
